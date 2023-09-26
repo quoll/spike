@@ -1,51 +1,31 @@
 (ns build
+  (:refer-clojure :exclude [test])
   (:require [clojure.tools.build.api :as b]
-            [clojure.tools.deps :as t]))
+            [org.corfield.build :as bb]))
 
 (def lib 'org.clojars.quoll/spike)
-(def version (format "0.0.%s" (b/git-count-revs nil)))
-(def class-dir "target/classes")
-(def basis (b/create-basis {:project "deps.edn"}))
-(def jar-file (format "target/%s-%s.jar" (name lib) version))
+(def version "0.0.1")
 
-;; boilerplate - see https://clojure-doc.org/articles/cookbooks/cli_build_projects/
-;; clojure -T:build run :aliases '[:test]'
-(defn run [{:keys [aliases] :as opts}]
-  (let [basis      (b/create-basis opts)
-        alias-data (t/combine-aliases basis aliases)
-        cmd-opts   (merge {:basis     basis
-                           :main      'clojure.main
-                           :main-args ["-e" "(clojure-version)"]}
-                          opts
-                          alias-data)
-        cmd        (b/java-command cmd-opts)]
-    (when-not (zero? (:exit (b/process cmd)))
-      (throw (ex-info (str "run failed for " aliases) opts)))
-    opts))
-
-;; clojure -T:build run-tests
-(defn run-tests "Run the tests." [opts]
-  (run (update opts :aliases conj :test)))
+;; clojure -T:build test
+(defn test "Run the tests." [opts]
+  (bb/run-tests opts))
 
 ;; clojure -T:build ci
 (defn ci "Run the CI pipeline of tests (and build the JAR)." [opts]
   (-> opts
       (assoc :lib lib :version version)
-      (run-tests)
-      (b/clean)
-      (b/jar)))
+      (bb/run-tests)
+      (bb/clean)
+      (bb/jar)))
 
-(defn clean [_]
-  (b/delete {:path "target"}))
+;; clojure -T:build install
+(defn install "Install the JAR locally." [opts]
+  (-> opts
+      (assoc :lib lib :version version)
+      (bb/install)))
 
-(defn jar [_]
-  (b/write-pom {:class-dir class-dir
-                :lib lib
-                :version version
-                :basis basis
-                :src-dirs ["src"]})
-  (b/copy-dir {:src-dirs ["src" "resources"]
-               :target-dir class-dir})
-  (b/jar {:class-dir class-dir
-          :jar-file jar-file}))
-
+;; clojure -T:build deploy
+(defn deploy "Deploy the JAR to Clojars." [opts]
+  (-> opts
+      (assoc :lib lib :version version)
+      (bb/deploy)))
