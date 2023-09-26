@@ -5,7 +5,7 @@ A simple SPARQL client.
 ## Usage
 ### Leiningen/Boot
 ```clojure
-[org.clojars.quoll/raphael "0.0.1"]
+[org.clojars.quoll/spike "0.0.1"]
 ```
 
 ### Clojure CLI/deps.edn
@@ -16,7 +16,7 @@ org.clojars.quoll/spike {:mvn/version "0.0.1"}
 The only supported function right now is `query`:
 
 ```clojure
-(:require '[quoll.spike] :refer [query])
+(:require '[quoll.rdf.spike] :refer [query])
 
 (query "http://localhost:7200/repositories/data" "SELECT ?types WHERE { ?s a ?types }")
 ```
