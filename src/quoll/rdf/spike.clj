@@ -3,10 +3,11 @@
   {:author "Paula Gearon"}
   (:require [babashka.http-client :as http]
             [tiara.data :as t]
-            [quoll.rdf.rudolf :as rdf :refer [iri blank-node lang-literal typed-literal]]
+            [quoll.rdf :as rdf :refer [iri blank-node lang-literal typed-literal]]
             [clojure.data.json :as json]
             [clojure.java.io :as io]
-            [clojure.string :as s])
+            [clojure.string :as s]
+            [clojure.instant :as inst])
   (:import [java.util Properties]
            [java.net URLEncoder URI]
            [java.io Writer]))
@@ -33,12 +34,21 @@
 (defn rdf-resource
   [{:keys [type value] :as term}]
   (case type
-    "uri" (iri value)
+    "uri" (iri value) ;; TODO: add prefix detection and string option
     "bnode" (blank-node value)
     "literal" (let [{lang :xml:lang datatype :datatype} term]
                 (cond
                   lang (lang-literal value lang)
-                  (and datatype (not= (rdf/as-str datatype) rdf/XSD-STRING-STR)) (typed-literal value (iri datatype))
+                  datatype (letfn [(dt? [x] (= datatype (rdf/as-str x)))]
+                             (cond
+                               (dt? rdf/XSD-STRING) value
+                               (dt? rdf/XSD-INTEGER) (parse-long value)
+                               (dt? rdf/XSD-FLOAT) (parse-double value)
+                               (dt? rdf/XSD-DATE) (inst/read-instant-date value)
+                               (dt? rdf/XSD-BOOLEAN) (parse-boolean value)
+                               (dt? rdf/XSD-QNAME) (apply keyword (s/split value #":" 2))
+                               (dt? rdf/XSD-ANYURI) (URI. value)
+                               :default (typed-literal value (iri datatype))))
                   :default value))
     (throw (ex-info "Unknown datatype" {:term term :type type :value value}))))
 
@@ -60,15 +70,25 @@
             bindings)
        header-data)))
 
-(defn query
-  "Issues a SPARQL query"
-  ([q] (query *service* q))
-  ([service q]
-   (let [url-with-params (str service "?query=" (URLEncoder/encode q))]
+(defn- do-query
+  [service q]
+  (let [url-with-params (str service "?query=" (URLEncoder/encode q))]
      (-> (http/request {:method :get
                         :uri url-with-params
                         :headers {"Accept" "application/sparql-results+json"}})
          :body
-         (json/read-str :key-fn keyword)
-         decode-json-results))))
+         (json/read-str :key-fn keyword))))
+
+(defn query
+  "Issues a SPARQL query"
+  ([q] (query *service* q))
+  ([service q]
+   (decode-json-results (do-query service q))))
+
+(defn query-table
+  "Issues a SPARQL query, returning a seq of vectors"
+  ([q] (query-table *service* q))
+  ([service q]
+   (let [results (query service q)]
+     (map #(vec (vals %)) results))))
 
