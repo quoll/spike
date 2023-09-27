@@ -4,7 +4,7 @@
             [org.corfield.build :as bb]))
 
 (def lib 'org.clojars.quoll/spike)
-(def version "0.0.1")
+(def version "0.0.2")
 
 ;; clojure -T:build test
 (defn test "Run the tests." [opts]
