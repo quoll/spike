@@ -67,6 +67,12 @@ Keyword (the name or the function) will also report an error if no context is av
 
 Using strings or keywords will return an equivalent CURIE for an IRI, but the original IRI string can only be reconstructed with the context. Conversely, the default IRI objects contain all of the original data, even though they serialize in shortened form.
 
+## Roadmap
+
+* Add Update support.
+* Basic SPARQL parsing to autodetect query PREFIXes as a context.
+* Structured SPARQL construction.
+
 ## License
 
 Copyright © 2023 Paula Gearon
