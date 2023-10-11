@@ -1,6 +1,7 @@
 # Spike
 
 A simple SPARQL client.
+<img src="https://github.com/quoll/spike/assets/358875/50575440-6f81-47c7-bd4e-794770d7280f" alt="Spike the Dragon" align="right"/>
 
 ## Usage
 ### Leiningen/Boot
