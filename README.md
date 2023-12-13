@@ -32,7 +32,7 @@ A file named `.sparql` in the user's home directory can also keep a default endp
 
 ```bash
 $ cat ~/.sparql
-url=url=http://localhost:7200/repositories/data
+url=http://localhost:7200/repositories/data
 ```
 
 Alternately, the an environment variable `SPARQL` can also be used:
