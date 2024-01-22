@@ -31,7 +31,7 @@ A default service can be set, allowing the first argument to be removed.
 A file named `default` in the `$HOME/.sparql` directory can also keep a default endpoint:
 
 ```bash
-$ cat ~/.sparql
+$ cat ~/.sparql/default
 url=http://localhost:7200/repositories/data
 ```
 
