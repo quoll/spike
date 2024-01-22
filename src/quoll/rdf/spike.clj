@@ -4,32 +4,47 @@
   (:require [babashka.http-client :as http]
             [tiara.data :as t]
             [quoll.rdf :as rdf :refer [iri blank-node lang-literal typed-literal]]
+            [clj-yaml.core :as yaml]
             [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.string :as s]
             [clojure.instant :as inst])
   (:import [java.util Properties]
            [java.net URLEncoder URI URL]
-           [java.io Writer]))
+           [java.io Writer File]))
 
-(def SPARQL-FILE "The file containing SPARQL defaults" ".sparql")
+(def SPARQL-FILE "The file containing SPARQL defaults" "default")
+(def SPARQL-CFG-DIR "The directory containing SPARQL configuration" ".sparql")
+(def CREDENTIALS-FILE "The file containing SPARQL credentials" "credentials.yml")
 (def SPARQL "The environment variable for the default SPARQL endpoint URL" "SPARQL_URL")
+
+(def sparql-dir (str (System/getProperty "user.home") File/separator SPARQL-CFG-DIR))
+(def sparql-config-file (str sparql-dir File/separator SPARQL-FILE))
+(def credentials-file (str sparql-dir File/separator CREDENTIALS-FILE))
 
 (defn default-service
   []
   (or (System/getenv SPARQL)
-      (let [home-dir (System/getProperty "user.home")
-            sparql-config (io/file home-dir SPARQL-FILE)
+      (let [sparql-config (io/file sparql-config-file)
             props (and (.exists sparql-config)
                        (with-open [r (io/reader sparql-config)]
                          (into {} (doto (Properties.) (.load r)))))
-            cfg (reduce (fn [c [k v]]
-                          (case (s/lower-case k)
-                            ("endpoint" "sparql" "url") (assoc c :url v)))
-                        {} props)]
+            cfg (and props (reduce (fn [c [k v]]
+                                     (case (s/lower-case k)
+                                       ("endpoint" "sparql" "url") (assoc c :url v)))
+                                   {} props))]
         (:url cfg))))
 
+(defn load-credentials
+  [path]
+  (let [credentials-file (io/file path)]
+    (when (.exists credentials-file)
+      (with-open [r (io/reader credentials-file)]
+        (yaml/parse-stream r {:key-fn :key})))))
+
 (def ^:dynamic *service* (default-service))
+
+(def credentials (load-credentials credentials-file))
 
 (defn context-iri
   "Returns an IRI function that takes a string, and calls a 3-argument version of the iri-fn that
@@ -59,7 +74,7 @@
                                 (dt? rdf/XSD-STRING) value
                                 (dt? rdf/XSD-INTEGER) (parse-long value)
                                 (dt? rdf/XSD-FLOAT) (parse-double value)
-                                (dt? rdf/XSD-DATE) (inst/read-instant-date value)
+                                (dt? rdf/XSD-DATETIME) (inst/read-instant-date value)
                                 (dt? rdf/XSD-BOOLEAN) (parse-boolean value)
                                 (dt? rdf/XSD-QNAME) (apply keyword (s/split value #":" 2))
                                 (dt? rdf/XSD-ANYURI) (URI. value)
@@ -85,12 +100,26 @@
             bindings)
        header-data)))
 
+(defn get-auth*
+  "Returns the authorization header for a service, if credentials are available."
+  [service credentials]
+  (let [domains (keys credentials)]
+    (when-let [domain (first (filter #(s/starts-with? service %) domains))]
+      (when-let [{:strs [username password]} (get credentials domain)]
+        (when (and username password)
+          {:basic-auth [username password]})))))
+
+(def get-auth (memoize get-auth*))
+
 (defn- do-query
   [service q]
-  (let [url-with-params (str service "?query=" (URLEncoder/encode q))]
-     (-> (http/request {:method :get
+  (let [url-with-params (str service "?query=" (URLEncoder/encode q))
+        auth (get-auth service credentials)]
+     (-> {:method :get
                         :uri url-with-params
-                        :headers {"Accept" "application/sparql-results+json"}})
+          :headers {"Accept" "application/sparql-results+json"}}
+         (merge auth)
+         http/request 
          :body
          (json/read-str :key-fn keyword))))
 
