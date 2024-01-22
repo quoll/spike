@@ -28,7 +28,7 @@ The only supported functions right now are `query` and `query-table`:
 
 A default service can be set, allowing the first argument to be removed.
 
-A file named `.sparql` in the user's home directory can also keep a default endpoint:
+A file named `default` in the `$HOME/.sparql` directory can also keep a default endpoint:
 
 ```bash
 $ cat ~/.sparql
