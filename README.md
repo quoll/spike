@@ -32,7 +32,7 @@ A file named `default` in the `$HOME/.sparql` directory can also keep a default 
 
 ```bash
 $ cat ~/.sparql
-url=url=http://localhost:7200/repositories/data
+url=http://localhost:7200/repositories/data
 ```
 
 Alternately, the an environment variable `SPARQL` can also be used:
