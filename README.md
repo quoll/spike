@@ -6,20 +6,22 @@ A simple SPARQL client.
 ## Usage
 ### Leiningen/Boot
 ```clojure
-[org.clojars.quoll/spike "0.0.2"]
+[org.clojars.quoll/spike "0.0.3"]
 ```
 
 ### Clojure CLI/deps.edn
 ```clojure
-org.clojars.quoll/spike {:mvn/version "0.0.2"}
+org.clojars.quoll/spike {:mvn/version "0.0.3"}
 ```
 
-The only supported functions right now are `query` and `query-table`:
+The only supported functions right now are `query`, `query-table`, and `update!`:
 
 ```clojure
-(:require '[quoll.rdf.spike] :refer [query query-table])
+(:require '[quoll.rdf.spike] :refer [query query-table update!])
 
 (query "http://localhost:7200/repositories/data" "SELECT ?types WHERE { ?s a ?types }")
+
+(update! "http://localhost:7200/repositories/data" "INSERT DATA {<http://example.org/a> a <http://example.org/AClass>}")
 ```
 
 `query-table` returns the same result as a seq of vectors.
