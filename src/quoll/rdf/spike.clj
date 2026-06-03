@@ -1,14 +1,12 @@
 (ns quoll.rdf.spike
   "Simple SPARQL utility"
   {:author "Paula Gearon"}
-  (:require [babashka.http-client :as http]
-            [tiara.data :as t]
-            [quoll.rdf :as rdf :refer [iri blank-node lang-literal typed-literal]]
+  (:require [quoll.rdf.data :as data]
+            [babashka.http-client :as http]
+            [quoll.rdf :as rdf :refer [iri]]
             [clj-yaml.core :as yaml]
-            [clojure.data.json :as json]
             [clojure.java.io :as io]
-            [clojure.string :as s]
-            [clojure.instant :as inst])
+            [clojure.string :as s])
   (:import [java.util Properties]
            [java.net URLEncoder URI URL]
            [java.nio.charset Charset StandardCharsets]
@@ -20,6 +18,11 @@
 (def SPARQL "The environment variable for the default SPARQL endpoint URL" "SPARQL_URL")
 
 (def json-result "application/sparql-results+json")
+(def xml-result "application/sparql-results+xml")
+(def csv-result "text/csv")
+(def tsv-result "text/tsv")
+(def ttl-result "text/turtle")
+(def rdfxml-result "application/rdf+xml")
 
 (def sparql-dir (str (System/getProperty "user.home") File/separator SPARQL-CFG-DIR))
 (def sparql-config-file (str sparql-dir File/separator SPARQL-FILE))
@@ -63,60 +66,13 @@
    then a 1 argument version will be called."
   [context iri-fn]
   (fn [u]
-    (if-let [[p nms] (first (filter (fn [[k v]] (s/starts-with? u v)) context))]
+    (if-let [[p nms] (first (filter (fn [[_ v]] (s/starts-with? u v)) context))]
       (let [prefix (name p)]
         (iri-fn u prefix (subs u (count nms))))
       (iri-fn u))))
 
 (defn uri [u] (URI. u))
 (defn url [u] (URL. u))
-
-(defn rdf-resource
-  "Converts a SPARQL result object into an appropriate RDF resource object"
-  ([term] (rdf-resource iri term))
-  ([iri-fn {:keys [type value] :as term}]
-   (case type
-     "uri" (iri-fn value)
-     "bnode" (blank-node value)
-     "literal" (let [{lang :xml:lang datatype :datatype} term]
-                 (cond
-                   lang (lang-literal value lang)
-                   datatype (letfn [(dt? [x] (= datatype (rdf/as-str x)))]
-                              (cond
-                                (dt? rdf/XSD-STRING) value
-                                (dt? rdf/XSD-INTEGER) (parse-long value)
-                                (dt? rdf/XSD-FLOAT) (parse-double value)
-                                (dt? rdf/XSD-DATETIME) (inst/read-instant-date value)
-                                (dt? rdf/XSD-BOOLEAN) (parse-boolean value)
-                                (dt? rdf/XSD-QNAME) (apply keyword (s/split value #":" 2))
-                                (dt? rdf/XSD-ANYURI) (URI. value)
-                                :default (typed-literal value (iri datatype))))
-                   :default value))
-     (throw (ex-info "Unknown datatype" {:term term :type type :value value})))))
-
-(defn decode-json-results
-  "Decodes JSON results from a SPARQL query."
-  [{{:keys [vars link] :as head} :head {:keys [bindings] :as results} :results :as response} iri-fn]
-  (if-let [[_ value] (find response :boolean)]
-    (do
-      (when results
-        (println "Unexpected results with boolean response:" results))
-      value)
-    (do
-      (when-let [short-head (seq (dissoc head :vars :link))]
-        (println "Extra headers: " (map first short-head)))
-      (when-let [short-results (seq (dissoc results :bindings))]
-        (println "Extra results " (map first short-results)))
-      (let [cols (mapv keyword vars)
-            header-data (cond-> {:cols cols}
-                          link (assoc :link link))]
-        (with-meta
-          (mapv (fn [bndg]
-                  (persistent! (reduce (fn [m c] (assoc! m c (rdf-resource iri-fn (get bndg c))))
-                                       (transient t/EMPTY_MAP)
-                                       cols)))
-                bindings)
-          header-data)))))
 
 (defn get-auth*
   "Returns the authorization header for a service, if credentials are available."
@@ -137,6 +93,31 @@
        (interpose "&")
        (apply str)))
 
+(defn normalize-headers
+  "Ensure headers are consistent, and already set for use in http calls"
+  [header]
+  (into {} (map (fn [[k v]] [(s/capitalize (name k)) v])) header))
+
+(def response-handlers
+  {json-result data/json-result-parser
+   ttl-result data/ttl-parser
+   csv-result data/csv-parser
+   tsv-result data/tsv-parser
+   xml-result data/xml-result-parser
+   rdfxml-result (fn [_] (fn [_] (throw (ex-info "No, I don't want to load Jena" {:reason "no"}))))})
+
+(defn response-handler
+  "Processes an HTTP response, throwing an exception of a non 2xx result"
+  ([response] (response-handler response identity))
+  ([{:keys [status body headers] :as response} iri-fn]
+   (if (and (>= status 200) (< status 300))
+     (let [content-type (get headers "Content-type")
+           handler (if-let [h (response-handlers content-type)]
+                     (h iri-fn)
+                     identity)]
+       (handler body))
+     (throw (ex-info "Unexpected response from server" response)))))
+
 (defn- do-query
   "Executes a SPARQL query as an HTTP GET request, sending the query as a URL-encoded parameter.
   Optionally accepts a additional argument map. A `:headers` map will be merged with the headers.
@@ -146,18 +127,14 @@
   (let [url-with-params (cond-> (str service (if (s/includes? service "?") \& \?) "query=" (url-encode q))
                           params (str \& (param-str params)))
         auth (get-auth service credentials)
-        request-header (merge {"Accept" json-result} headers)
-        response-handler (if (= json-result (request-header "Accept"))
-                           #(-> % (json/read-str :key-fn keyword) (decode-json-results iri-fn))
-                           identity)]
+        request-header (merge {"Accept" json-result} (normalize-headers headers))]
     (-> {:method :get
          :uri url-with-params
          :headers request-header}
         (merge auth)
         (merge (dissoc args :params :headers))
         http/request
-        :body
-        response-handler)))
+        (response-handler iri-fn))))
 
 (defn- do-update
   "Executes a SPARQL UPDATE as an HTTP POST request, sending the update statement as the request
@@ -201,13 +178,13 @@
   (let [[service [q & arg-pairs]] (if (s/starts-with? f "http")
                                     [f r]
                                     [*service* args])
-        {:keys [iri-fn context] :or {iri-fn iri} :as arg-map} (apply hash-map arg-pairs)
+        {:keys [iri-fn context] :or {iri-fn rdf/iri} :as arg-map} (apply hash-map arg-pairs)
         context (if (= :default context) rdf/common-prefixes context)
         iri-fn (if (fn? iri-fn)
                  (let [f (cond
                            (= keyword iri-fn) keyword3
                            (= str iri-fn) string3
-                           :default iri-fn)]
+                           :else iri-fn)]
                    (if context (context-iri context f) iri-fn))
                  (case iri-fn
                    (:uri "uri") uri
