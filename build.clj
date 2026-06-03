@@ -5,7 +5,7 @@
 
 (def pom "build-rsc/pom.xml")
 (def lib 'org.clojars.quoll/spike)
-(def version "0.0.3")
+(def version "0.0.4")
 
 ;; clojure -T:build test
 (defn test "Run the tests." [opts]

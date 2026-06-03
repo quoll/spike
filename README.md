@@ -6,12 +6,12 @@ A simple SPARQL client.
 ## Usage
 ### Leiningen/Boot
 ```clojure
-[org.clojars.quoll/spike "0.0.3"]
+[org.clojars.quoll/spike "0.0.4"]
 ```
 
 ### Clojure CLI/deps.edn
 ```clojure
-org.clojars.quoll/spike {:mvn/version "0.0.3"}
+org.clojars.quoll/spike {:mvn/version "0.0.4"}
 ```
 
 The only supported functions right now are `query`, `query-table`, and `update!`:
@@ -72,13 +72,12 @@ Using strings or keywords will return an equivalent CURIE for an IRI, but the or
 
 ## Roadmap
 
-* Add Update support.
 * Basic SPARQL parsing to autodetect query PREFIXes as a context.
 * Structured SPARQL construction.
 
 ## License
 
-Copyright © 2023 Paula Gearon
+Copyright © 2023-2026 Paula Gearon
 
 Distributed under the Eclipse Public License version 2.0.
 
